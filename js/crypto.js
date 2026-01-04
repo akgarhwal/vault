@@ -113,3 +113,51 @@ export function base64ToBuffer(base64) {
     }
     return bytes;
 }
+
+/**
+ * Generates a password with specific constraints:
+ * 8-10 chars, exactly 2 special chars, mix of alnum.
+ * @returns {string}
+ */
+export function generateCustomPassword() {
+    const chars = {
+        letters: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+        digits: '0123456789',
+        special: '!@#$%^&*()_+-=[]{}|;:,.<>?'
+    };
+
+    // Random length 8-15
+    const rand = new Uint32Array(1);
+    window.crypto.getRandomValues(rand);
+    const length = 8 + (rand[0] % 8);
+
+    let password = [];
+    const array = new Uint32Array(length);
+    window.crypto.getRandomValues(array);
+
+    // 1. Exact 2 Special Chars
+    for (let i = 0; i < 2; i++) {
+        password.push(chars.special[array[i] % chars.special.length]);
+    }
+
+    // 2. At least 1 Digit
+    password.push(chars.digits[array[2] % chars.digits.length]);
+
+    // 3. At least 1 Letter
+    password.push(chars.letters[array[3] % chars.letters.length]);
+
+    // 4. Fill remaining with Alphanumeric
+    const alphanumeric = chars.letters + chars.digits;
+    for (let i = 4; i < length; i++) {
+        password.push(alphanumeric[array[i] % alphanumeric.length]);
+    }
+
+    // 5. Shuffle
+    for (let i = password.length - 1; i > 0; i--) {
+        window.crypto.getRandomValues(rand);
+        const j = rand[0] % (i + 1);
+        [password[i], password[j]] = [password[j], password[i]];
+    }
+
+    return password.join('');
+}

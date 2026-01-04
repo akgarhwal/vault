@@ -280,7 +280,24 @@ textarea:focus {
 }
 
 .password-input-wrapper input {
-    padding-right: 40px;
+    padding-right: 80px;
+}
+
+#generate-password-btn {
+    position: absolute;
+    right: 44px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 4px;
+}
+
+#generate-password-btn:hover {
+    color: var(--text-primary);
 }
 
 .toggle-visibility {

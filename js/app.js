@@ -104,7 +104,8 @@ function setupEventListeners() {
     // Visibility Toggle
     document.querySelectorAll('.toggle-visibility').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const input = e.target.previousElementSibling;
+            const wrapper = e.target.parentElement;
+            const input = wrapper.querySelector('input');
             if (input.type === 'password') {
                 input.type = 'text';
                 e.target.textContent = '🙈';
@@ -114,6 +115,23 @@ function setupEventListeners() {
             }
         });
     });
+
+    // Generate Password
+    const genBtn = document.getElementById('generate-password-btn');
+    if (genBtn) {
+        genBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const password = Crypto.generateCustomPassword();
+            const input = document.getElementById('item-password');
+            input.value = password;
+
+            // Show password
+            input.type = 'text';
+            const wrapper = input.parentElement;
+            const toggle = wrapper.querySelector('.toggle-visibility');
+            if (toggle) toggle.textContent = '🙈';
+        });
+    }
 
     // Filter
     document.querySelectorAll('.nav-item').forEach(btn => {

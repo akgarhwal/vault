@@ -1,4 +1,4 @@
-# Vault (Secure Password Manager)
+# [Vault](https://akgarhwal.github.io/vault/) (Secure Password Manager)
 
 A simple, secure, and modern Password Manager built with **Vanilla JavaScript, HTML, and CSS**. No frameworks, no trackers, just pure web technologies.
 

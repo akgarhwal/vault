@@ -1,12 +1,15 @@
 import * as Crypto from './crypto.js';
 import { Storage } from './storage.js';
 import { UI } from './ui.js';
+import { FileSystem } from './file-system.js';
+import { DB } from './db.js';
 
 // State
 let STATE = {
     key: null, // CryptoKey
     items: [], // Decrypted items in memory
-    isNewUser: false
+    isNewUser: false,
+    syncHandle: null
 };
 
 // Initialization
@@ -28,10 +31,74 @@ async function init() {
         UI.authView.querySelector('p').textContent = 'Enter your master password to access your secure data.';
         UI.authView.querySelector('.small-text').textContent = ''; // Hide "First time?" text
         UI.unlockBtn.textContent = 'Unlock';
+
+        // Show Reset Button for existing users
+        const resetBtn = document.getElementById('reset-vault-btn');
+        if (resetBtn) resetBtn.classList.remove('hidden');
     }
 
     setupEventListeners();
     setupAutoLock();
+    checkSyncStatus();
+}
+
+async function checkSyncStatus() {
+    const handle = await FileSystem.getStoredHandle();
+    const btn = document.getElementById('sync-btn');
+    const info = document.getElementById('sync-info');
+
+    if (handle) {
+        STATE.syncHandle = handle;
+        // Check permissions
+        const hasPerm = await FileSystem.verifyPermission(handle, false);
+
+        if (info) {
+            // Get Custom Label or default
+            const savedLabel = localStorage.getItem('vault_sync_path_label');
+            const displayLabel = savedLabel || handle.name;
+            const prefix = savedLabel ? '📍 ' : '<span class="path-prefix">📂 / ... /</span> ';
+
+            info.innerHTML = `${prefix}${displayLabel}`;
+            info.classList.remove('hidden');
+            info.title = "Browser security hides the real path. Click to manually add the full path label.";
+            info.style.cursor = 'pointer';
+
+            // Remove old listener to avoid dupes (naive implementation)
+            info.onclick = async () => {
+                const current = localStorage.getItem('vault_sync_path_label') || '';
+                const newPath = prompt("Browsers hide the full file path for security.\n\nTo remember where this file is, paste the full path here as a label:", current);
+                if (newPath !== null) { // If not cancelled
+                    localStorage.setItem('vault_sync_path_label', newPath);
+                    checkSyncStatus(); // Re-render
+                }
+            };
+        }
+
+        if (hasPerm) {
+            btn.textContent = '📂 Synced';
+            btn.style.color = '#10b981'; // green
+            btn.title = `Synced with: ${handle.name}`;
+
+            if (info) {
+                info.classList.add('active');
+                info.classList.remove('disconnected');
+            }
+        } else {
+            btn.textContent = '⚠️ Reconnect';
+            btn.style.color = '#f59e0b'; // orange
+            btn.title = 'Click to reconnect sync';
+
+            if (info) {
+                info.innerHTML += ' (Disconnected)';
+                info.classList.add('disconnected');
+                info.classList.remove('active');
+            }
+        }
+    } else {
+        btn.textContent = '📂 File Sync';
+        btn.style.color = '';
+        if (info) info.classList.add('hidden');
+    }
 }
 
 function setupAutoLock() {
@@ -72,6 +139,22 @@ function setupEventListeners() {
     UI.masterPasswordInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleAuth();
     });
+
+
+
+    // Reset Data
+    const resetBtn = document.getElementById('reset-vault-btn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', async () => {
+            if (confirm('DANGER: This will delete ALL your vault data permanently. You will lose all your passwords if you do not have a backup.\n\nAre you sure?')) {
+                if (confirm('Final Confirmation: Delete everything and start fresh?')) {
+                    Storage.clear();
+                    await DB.clear();
+                    location.reload();
+                }
+            }
+        });
+    }
 
     // Dashboard
     UI.lockBtn.addEventListener('click', () => location.reload()); // Simple lock -> Changed to use lockVault for consistency? 
@@ -152,6 +235,40 @@ function setupEventListeners() {
     UI.importBtn.addEventListener('click', () => UI.show(UI.importModal));
     UI.cancelImportBtn.addEventListener('click', () => UI.hide(UI.importModal));
     UI.confirmImportBtn.addEventListener('click', handleImport);
+
+    // Sync Button Logic
+    const syncBtn = document.getElementById('sync-btn');
+    if (syncBtn && FileSystem.isSupported()) {
+        syncBtn.addEventListener('click', async () => {
+            if (STATE.syncHandle) {
+                // Already have a handle, try to re-verify permissions
+                const granted = await FileSystem.verifyPermission(STATE.syncHandle, true);
+                if (granted) {
+                    alert('Sync connection re-established!');
+                    checkSyncStatus();
+                } else {
+                    // Permission denied or failed, maybe ask to pick new file?
+                    if (confirm('Permission denied. Do you want to link a new file?')) {
+                        const result = await FileSystem.saveToDisk(JSON.stringify(getExportData(), null, 2), 'vault.json');
+                        if (result.success) {
+                            STATE.syncHandle = result.handle;
+                            checkSyncStatus();
+                        }
+                    }
+                }
+            } else {
+                // No handle, start new sync (Save As flow)
+                alert('Select a location to store your synced vault file.');
+                const result = await FileSystem.saveToDisk(JSON.stringify(getExportData(), null, 2), 'vault.json');
+                if (result.success) {
+                    STATE.syncHandle = result.handle;
+                    checkSyncStatus();
+                }
+            }
+        });
+    } else if (syncBtn) {
+        syncBtn.classList.add('hidden');
+    }
 }
 
 // Auth Handler
@@ -372,60 +489,97 @@ async function handleSaveItem(e) {
         Storage.saveItems(storedItems);
     }
 
+    // Trigger Auto-Sync
+    if (STATE.syncHandle) {
+        try {
+            // Re-verify write permission implicitly by trying to write? 
+            // Better to verify explicit if needed, but write might just fail if no perm.
+            // Check quickly
+            const hasPerm = await FileSystem.verifyPermission(STATE.syncHandle, true);
+            if (hasPerm) {
+                const data = getExportData();
+                await FileSystem.writeToFile(STATE.syncHandle, JSON.stringify(data, null, 2));
+                console.log('Auto-synced to disk');
+            } else {
+                console.warn('Sync failed: No permission');
+                checkSyncStatus(); // Update UI to show warning
+            }
+        } catch (err) {
+            console.error('Auto-sync error:', err);
+        }
+    }
+
     UI.hide(UI.itemModal);
     renderFilteredItems('all');
 }
 
 // Import/Export
-function handleExport() {
-    const meta = Storage.getMeta();
-    const items = Storage.getItems();
-
-    const exportData = {
+function getExportData() {
+    return {
         version: 1,
         exportedAt: new Date().toISOString(),
-        meta: meta,
-        items: items
+        meta: Storage.getMeta(),
+        items: Storage.getItems()
     };
+}
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+async function handleExport() {
+    const exportData = getExportData();
+
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const filename = `vault-export-${new Date().toISOString().slice(0, 10)}.json`;
+
+    // Download
+    const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `vault-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
 }
 
+function importVaultData(json) {
+    if (!json.meta || !json.items) throw new Error('Invalid Format');
+
+    // Merge Logic: Actually for security complexity in vanilla JS, 
+    // replacing is safer to ensure keys match. Merging encrypted data 
+    // from different keys is impossible without decryption first.
+    // So we will assume the Import replaces the vault IF the user confirms,
+    // OR we assume the import is from receiving same vault data.
+
+    // Current simple implementation: REPLACE
+    if (confirm('This will replace your current vault. Are you sure?')) {
+        Storage.setMeta(json.meta);
+        Storage.saveItems(json.items);
+        location.reload();
+    }
+}
+
 function handleImport() {
     const fileInput = document.getElementById('import-file');
-    const file = fileInput.files[0];
+    const textarea = document.getElementById('import-data');
 
+    // Check textarea first
+    if (textarea.value.trim()) {
+        try {
+            const json = JSON.parse(textarea.value);
+            importVaultData(json);
+            return;
+        } catch (e) {
+            alert('Invalid JSON in text area');
+            return;
+        }
+    }
+
+    const file = fileInput.files[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = async (e) => {
         try {
             const json = JSON.parse(e.target.result);
-            if (!json.meta || !json.items) throw new Error('Invalid Format');
-
-            // Merge Logic: Actually for security complexity in vanilla JS, 
-            // replacing is safer to ensure keys match. Merging encrypted data 
-            // from different keys is impossible without decryption first.
-            // So we will assume the Import replaces the vault IF the user confirms,
-            // OR we assume the import is from receiving same vault data.
-
-            // Current simple implementation: REPLACE
-            // Ideally we should try to decrypt the imported meta with CURRENT key. 
-            // If fails, it's a different vault -> Ask to replace?
-
-            // For now: Replace everything.
-            if (confirm('This will replace your current vault. Are you sure?')) {
-                Storage.setMeta(json.meta);
-                Storage.saveItems(json.items);
-                location.reload();
-            }
-
+            importVaultData(json);
         } catch (err) {
             alert('Failed to import file: ' + err.message);
         }

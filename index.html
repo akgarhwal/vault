@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Password Manager</title>
+    <title>🔒 Vault</title>
     <link rel="stylesheet" href="styles/main.css">
     <link rel="stylesheet" href="styles/components.css">
     <link rel="stylesheet" href="styles/cards.css">
@@ -49,6 +49,8 @@
                 <p id="auth-error" class="error-text hidden"></p>
                 <div class="auth-footer">
                     <p class="small-text">First time? Enter a new password to create your vault.</p>
+                    <button id="reset-vault-btn" class="btn btn-text btn-sm hidden"
+                        style="color: var(--danger); margin-top: 1rem;">Reset / Delete All Data</button>
                 </div>
             </div>
         </div>
@@ -58,6 +60,8 @@
             <header class="app-header">
                 <div class="logo">🔒 Vault</div>
                 <div class="header-actions">
+                    <span id="sync-info" class="sync-path-badge hidden"></span>
+                    <button id="sync-btn" class="btn btn-secondary btn-sm" title="File Sync">📂 File Sync</button>
                     <button id="export-btn" class="btn btn-secondary btn-sm">Export</button>
                     <button id="import-btn" class="btn btn-secondary btn-sm">Import</button>
                     <button id="lock-btn" class="btn btn-danger btn-sm">Lock</button>
@@ -159,7 +163,7 @@
         <div id="import-modal" class="modal hidden">
             <div class="modal-content">
                 <h2>Import Vault</h2>
-                <p class="warning-text">Warning: This will merge with your current data.</p>
+                <p class="warning-text">Warning: This will replace your current data.</p>
                 <div class="form-group">
                     <label>Paste JSON or Upload File</label>
                     <textarea id="import-data" rows="5" placeholder="Paste encrypted vault JSON here..."></textarea>
